@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>JS Game Boy Debug Emulator</title>
+    <style>
+        body { background-color: #1a1a1a; color: #e0e0e0; text-align: center; font-family: sans-serif; padding: 20px; }
+        #emulator-container { margin: 20px auto; max-width: 400px; background: #2a2a2a; padding: 20px; border-radius: 10px; }
+        canvas { background: #8bac0f; border: 6px solid #306230; image-rendering: pixelated; display: block; margin: 0 auto 15px auto; }
+        #status { font-size: 14px; color: #aaa; font-family: monospace; }
+    </style>
+</head>
+<body>
+
+    <h1>HTML5 Game Boy Emulator (자동 테스트 모드)</h1>
+    
+    <div id="emulator-container">
+        <canvas id="screen" width="160" height="144" style="width: 320px; height: 288px;"></canvas>
+        <div id="status">서버에서 ROM 파일을 가져오는 중...</div>
+    </div>
+
+    <script>
+        // [테스트 주소 입력] 
+        // HTML 파일과 같은 폴더에 있는 gb 파일명을 적어주세요.
+        const ROM_URL = "test.gb"; 
+
+        const GameBoy = {
+            memory: new Uint8Array(65536),
+            registers: { a: 0, f: 0, b: 0, c: 0, d: 0, e: 0, h: 0, l: 0, pc: 0x0100, sp: 0xFFFE },
+            isRunning: false,
+
+            // fetch를 통해 서버(로컬서버)에 있는 파일을 읽어오는 함수
+            async loadROMFromURL(url) {
+                const statusEl = document.getElementById('status');
+                try {
+                    statusEl.innerText = `'${url}' 파일 요청 중...`;
+                    
+                    // 파일을 바이너리(Blob/ArrayBuffer) 형태로 가져옵니다.
+                    const response = await fetch(url);
+                    if (!response.ok) throw new Error(`파일을 찾을 수 없습니다. (HTTP ${response.status})`);
+                    
+                    const buffer = await response.arrayBuffer();
+                    const romData = new Uint8Array(buffer);
+                    
+                    // 메모리에 로드 (기본 32KB 영역)
+                    const sizeToLoad = Math.min(romData.length, 32768); 
+                    for (let i = 0; i < sizeToLoad; i++) {
+                        this.memory[i] = romData[i];
+                    }
+
+                    // 카트리지 타이틀 파싱 (0x0134 ~ 0x0143)
+                    let title = "";
+                    for (let i = 0x0134; i <= 0x0143; i++) {
+                        if (this.memory[i] === 0) break;
+                        title += String.fromCharCode(this.memory[i]);
+                    }
+                    
+                    statusEl.innerText = `로드 성공! 게임 타이틀: ${title}\n[PC: 0x0100에서 시작]`;
+                    
+                    this.reset();
+                    this.start();
+                    
+                } catch (error) {
+                    statusEl.innerHTML = `<span style="color: #ff6b6b;">에러 발생: ${error.message}</span><br>
+                    <small>※ 주의: 로컬 파일(file://) 보안 정책 때문일 수 있습니다. 아래 가이드를 확인하세요.</small>`;
+                    console.error(error);
+                }
+            },
+
+            reset() {
+                this.registers.pc = 0x0100;
+                this.registers.sp = 0xFFFE;
+                this.isRunning = true;
+            },
+
+            start() {
+                const loop = () => {
+                    if (!this.isRunning) return;
+                    
+                    let cyclesThisFrame = 0;
+                    const CYCLES_PER_FRAME = 70224;
+
+                    while (cyclesThisFrame < CYCLES_PER_FRAME) {
+                        cyclesThisFrame += this.stepCPU();
+                    }
+
+                    this.drawFrame();
+                    requestAnimationFrame(loop);
+                };
+                requestAnimationFrame(loop);
+            },
+
+            stepCPU() {
+                let pc = this.registers.pc;
+                let opcode = this.memory[pc];
+                this.registers.pc++; 
+
+                switch(opcode) {
+                    case 0x00: return 4; // NOP
+                    // 여기에 디버깅용 로그나 다른 오프코드를 추가하며 테스트하세요.
+                    default: return 4; 
+                }
+            },
+
+            drawFrame() {
+                const canvas = document.getElementById('screen');
+                const ctx = canvas.getContext('2d');
+                const imgData = ctx.createImageData(160, 144);
+                for (let i = 0; i < imgData.data.length; i += 4) {
+                    let rand = Math.floor(Math.random() * 4);
+                    let color = rand === 0 ? 224 : rand === 1 ? 140 : rand === 2 ? 68 : 32;
+                    imgData.data[i] = color - 30;
+                    imgData.data[i+1] = color;
+                    imgData.data[i+2] = color - 40;
+                    imgData.data[i+3] = 255;
+                }
+                ctx.putImageData(imgData, 0, 0);
+            }
+        };
+
+        // 페이지가 열리자마자 파일 주소로부터 로드 시도
+        window.onload = () => {
+            GameBoy.loadROMFromURL(ROM_URL);
+        };
+    </script>
+</body>
+</html>
