@@ -136,6 +136,4 @@ You must provide your own ROM files. Do not distribute or share copyrighted ROMs
 
 Add your preferred license here.
 
-For example:
-
 `MIT License`
